@@ -158,12 +158,54 @@ error:
 	thread_exit ();
 }
 
+// 유저 스택에 프로그램 이름과 인자를 저장하는 함수
+// argv : 프로그램 이름과 인자가 저장되어 있는 메모리 공간
+// argc : 인자의 개수
+// intr_frame *if_: 인터럽트 프레임
+void argument_stack(char **argv , int argc ,struct intr_frame *if_) {
+	uint8_t padding;
+
+	//1. for문으로 argv를 넣는다 (거꾸로이므로 -1로)
+	for (int i = argc - 1; i >= 0 ; i--) {
+		if_->rsp = if_->rsp - (strlen(argv[i]) + 1);
+		memcpy(if_->rsp, argv[i], strlen(argv[i]) + 1);
+		argv[i] = (char*)if_->rsp;
+	}
+
+	// padding 넣기 = 8의 배수가 아니면 남은 수 만큼 패딩을 넣어줘야함
+	if (if_->rsp % 8 != 0) {
+		padding = if_->rsp % 8;
+		if_->rsp = if_->rsp - padding;
+		memset(if_->rsp, 0, padding);
+	}
+
+	// argv address 넣기
+	for (int i = argc; i >= 0; i--) {
+		if_->rsp = if_->rsp - sizeof(char *);
+		if (i == argc) {
+			memset(if_->rsp, 0, sizeof(char*));
+		}
+		memcpy(if_->rsp, &argv[i], sizeof(char *));
+	}
+
+	//return address 넣기
+	if_->rsp = if_->rsp - sizeof(char *);
+	memset(if_->rsp, 0, sizeof(char*));
+
+	if_->R.rdi = argc;
+	if_->R.rsi = if_->rsp + sizeof(void*);
+
+}
+
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
+	char *token, *save_ptr;
+	char argv[64];
+	int argc = 0;
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -173,12 +215,26 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
+   for(token = strtok_r(file_name," ", &save_ptr); token != NULL;){
+        //printf ("'%s'\n", token);
+		argv[argc] = token;
+        token = strtok_r (NULL, " ", &save_ptr);
+		argc++;
+    }
 	/* We first kill the current context */
 	process_cleanup ();
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
+	argument_stack(argv, argc, &_if);
 
+	if(!success) {
+		return -1;
+	}
+	//hex_dump() 넣기
+	hex_dump(_if.rsp, _if.rsp, KERN_BASE - _if.rsp, true);
+	
+	
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
@@ -188,8 +244,6 @@ process_exec (void *f_name) {
 	do_iret (&_if);
 	NOT_REACHED ();
 }
-
-
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
  * exception), returns -1.  If TID is invalid or if it was not a
@@ -204,6 +258,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while(1){}
 	return -1;
 }
 
