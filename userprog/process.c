@@ -257,12 +257,12 @@ process_wait (tid_t child_tid UNUSED) {
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 	// 무한 대기
-	// while(1){}
+	while(1){}
 	//test용 for문
-		for(int i=0;i<10000000;i++){
+	// 	for(int i=0;i<10000000;i++){
 
-	}
-	return -1;
+	// }
+	// return -1;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
