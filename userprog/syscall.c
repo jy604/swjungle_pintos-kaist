@@ -168,27 +168,47 @@ remove (const char *file) {
 	}
 }
 
+// 현재 프로세스의 fdt에 파일을 넣는 함수
+int add_file_to_fdt(struct file *file) {
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdt;
+	int fd = curr->next_fd;
+
+	//fdt테이블에서 2부터 탐색하면서 null값을 만나면 거기에 fdt테이블이 open_file을 가리키게끔 해줌
+	// 함수
+	while (curr->fdt[fd] != NULL && fd < FDCOUNT) {
+		fd++;
+	}
+	//fdt가 가득 찼으면
+	if (fd >= 64)
+		return -1;
+	
+	curr->next_fd = fd;
+	fdt[fd] = file;
+
+	return fd;
+
+	// for (fd = 0; siezof(fdt); fd++) {
+	// 	if (fdt[fd] == NULL) {
+	// 		fdt[fd] = open_file;
+	// 	}
+	// }
+}
+
 int
 open (const char *file) {
 	check_address(file);
 	struct file *open_file = filesys_open(file);
-	struct thread *curr = thread_current();
 	
 	if (open_file == NULL) {
 		return -1;
 	} 
 	// 현재 프로세스의 fdt에 파일을 넣는 구문
-	struct file **fdt = curr->fdt; // 2부터 순차적으로 1씩 증가
-	//fdt테이블에서 2부터 탐색하면서 null값을 만나면 거기에 fdt테이블이 open_file을 가리키게끔 해줌
-	int fd = curr->next_fd;
-	for (fd = 0; siezof(fdt); fd++) {
-		if (fdt[fd] == NULL) {
-			fdt[fd] = open_file;
-		}
-	}
+	int fd = add_file_to_fdt(open_file);
 	
+	//add 함수 실행했는데, 가득 차서 -1을 받은 경우
 	if (fd == -1) {
-		file_close(file);
+		file_close(open_file);
 	}
 	return fd;
 }
