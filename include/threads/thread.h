@@ -119,7 +119,8 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 
 	int exit_status; //project 2, exit syscall 호출 시 사용됨
-	struct file *fdt[64];
+	// struct file *fdt[64];
+	struct file **fdt;
 	int next_fd;
 };
 
