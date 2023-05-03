@@ -57,7 +57,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	// printf ("system call!\n"); // printf는 write call을 부름, 지우고 시작 
 	// thread_exit ();
 	int sys_number = f->R.rax; // syscall 번호는 rax에 저장되어있음
-	    /* 
+	/* 
 	인자 들어오는 순서:
 	1번째 인자: %rdi
 	2번째 인자: %rsi
@@ -107,8 +107,12 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			break;
 	case SYS_TELL:
 			tell(f->R.rdi);
+			break;
 	case SYS_CLOSE:
 			close(f->R.rdi);
+			break; 
+	default:
+		thread_exit();
 	}
 }
 
@@ -121,6 +125,7 @@ halt (void) {
 void
 exit (int status) {
 	struct thread *curr = thread_current();
+	curr->exit_status = status;
 	printf("%s : exit(%d)\n", curr->name, status);
 	thread_exit();
 }
@@ -143,18 +148,49 @@ wait (pid_t pid) {
 // 파일을 생성하는 syscall
 bool
 create (const char *file, unsigned initial_size) {
-
-	return syscall2 (SYS_CREATE, file, initial_size);
-}
+	check_address(file);
+		if (filesys_create(file, initial_size)) {
+		return true;
+	}
+	else {
+		return false;
+	}
+	}
 
 bool
 remove (const char *file) {
-	return syscall1 (SYS_REMOVE, file);
+	check_address(file);
+	if (filesys_remove(file)) {
+		return true;
+	}
+	else {
+		return false;
+	}
 }
 
 int
 open (const char *file) {
-	return syscall1 (SYS_OPEN, file);
+	check_address(file);
+	struct file *open_file = filesys_open(file);
+	struct thread *curr = thread_current();
+	
+	if (open_file == NULL) {
+		return -1;
+	} 
+	// 현재 프로세스의 fdt에 파일을 넣는 구문
+	struct file **fdt = curr->fdt; // 2부터 순차적으로 1씩 증가
+	//fdt테이블에서 2부터 탐색하면서 null값을 만나면 거기에 fdt테이블이 open_file을 가리키게끔 해줌
+	int fd = curr->next_fd;
+	for (fd = 0; siezof(fdt); fd++) {
+		if (fdt[fd] == NULL) {
+			fdt[fd] = open_file;
+		}
+	}
+	
+	if (fd == -1) {
+		file_close(file);
+	}
+	return fd;
 }
 
 int
@@ -184,7 +220,7 @@ tell (int fd) {
 
 void
 close (int fd) {
-	syscall1 (SYS_CLOSE, fd);
+	struct thread *curr = thread_current();
 }
 
 int

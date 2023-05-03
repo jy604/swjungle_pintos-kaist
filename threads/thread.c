@@ -435,6 +435,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 	t->origin_priority = priority;
 	t->waiting_lock = NULL;
+	t->exit_status = 0; // 종료할때 0으로 들어감
 	list_init(&t->donation_list);
 }
 

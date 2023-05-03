@@ -114,6 +114,10 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+
+	int exit_status; //project 2, exit syscall 호출 시 사용됨
+	struct file **fdt;
+	int next_fd;
 };
 
 /* If false (default), use round-robin scheduler.
