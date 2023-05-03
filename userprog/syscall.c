@@ -1,4 +1,6 @@
 #include "userprog/syscall.h"
+#include "lib/user/syscall.h"
+#include "lib/stdio.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
@@ -8,7 +10,26 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "threads/synch.h"
+int add_file_to_fdt(struct file *file);
 
+void halt(void);
+void exit(int status);
+tid_t fork (const char *thread_name);
+int exec (const char *file);
+int wait (tid_t pid);
+bool create (const char *file, unsigned initial_size);
+bool remove (const char *file);
+int open (const char *file);
+struct file *search_file_from_fdt(int fd);
+int filesize (int fd);
+int read (int fd, void *buffer, unsigned size);
+int write (int fd, const void *buffer, unsigned size);
+void seek (int fd, unsigned position);
+unsigned tell (int fd);
+void fdt_remove_file(int fd);
+void close (int fd);
+
+struct lock filesys_lock; // 파일이 cpu 점유할 때 필요
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
@@ -128,11 +149,11 @@ void
 exit (int status) {
 	struct thread *curr = thread_current();
 	curr->exit_status = status;
-	printf("%s : exit(%d)\n", curr->name, status);
+	printf("%s: exit(%d)\n", curr->name, status);
 	thread_exit();
 }
 
-tid_t
+pid_t
 fork (const char *thread_name){
 	return;
 }
@@ -143,13 +164,12 @@ exec (const char *file) {
 }
 
 int
-wait (tid_t pid) {
+wait (pid_t pid) {
 	return;
 }
 
 // 파일을 생성하는 syscall
-bool
-create (const char *file, unsigned initial_size) {
+bool create (const char *file, unsigned initial_size) {
 	check_address(file);
 		if (filesys_create(file, initial_size)) {
 		return true;
@@ -157,10 +177,9 @@ create (const char *file, unsigned initial_size) {
 	else {
 		return false;
 	}
-	}
+}
 
-bool
-remove (const char *file) {
+bool remove (const char *file) {
 	check_address(file);
 	if (filesys_remove(file)) {
 		return true;
@@ -169,6 +188,18 @@ remove (const char *file) {
 		return false;
 	}
 }
+
+// int add_file_to_fdt (struct file *f){
+// /* 파일 객체를 파일 디스크립터 테이블에 추가*/
+// 	struct thread *curr = thread_current();
+// 	int fd = curr->next_fd;
+// 	if(fd >64){ //크기 지정 어캐하징.
+// 		return -1;
+// 	}
+// 	curr->fdt[fd] = f;
+// 	curr->next_fd +=1; /* 파일 디스크립터의 최대값 1 증가 */
+// 	return fd; /* 파일 디스크립터 리턴 */
+// }
 
 // 현재 프로세스의 fdt에 파일을 넣는 함수
 int add_file_to_fdt(struct file *file) {
@@ -298,18 +329,56 @@ write (int fd, const void *buffer, unsigned size) {
 	return write_byte;
 }
 
+// 열린 파일의 위치(offset)를 이동하는 syscall
+// position 0은 파일의 시작 위치
 void
 seek (int fd, unsigned position) {
-	//syscall2 (SYS_SEEK, fd, position);
+	struct file *file = search_file_from_fdt(fd);
+	check_address(file);
+
+	if (fd <= STDOUT_FILENO) {
+		return;
+	}
+
+	file_seek(file, position);
 }
 
-// unsigned tell (int fd) {
-// 	return;
-// }
+// 열린 파일의 위치(offset)을 알려주는 syscall
+unsigned tell (int fd) {
+	struct file *file = search_file_from_fdt(fd);
+	check_address(file);
 
+	if (fd <= STDOUT_FILENO) {
+		return;
+	}
+	return file_tell(fd);
+}
+
+void fdt_remove_file(int fd) {
+	struct thread *curr = thread_current();
+
+	if (fd < 0 || fd > FDCOUNT) {
+		return;
+	}
+
+	curr->fdt[fd] = NULL;
+	
+}
+// 열린 파일 닫는 syscall
+// 파일 닫고 fd 제거
 void
 close (int fd) {
 	struct thread *curr = thread_current();
+	struct file *file = search_file_from_fdt(fd);
+
+	if (fd <= STDOUT_FILENO) {
+		return;
+	}
+
+	fdt_remove_file(fd);
+
+	file_close(file);
+	
 }
 
 // int

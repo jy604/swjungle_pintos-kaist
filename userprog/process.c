@@ -50,6 +50,9 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	// 파싱
+	char *token, *save_ptr;
+	token = strtok_r(file_name," ", &save_ptr);
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -230,7 +233,7 @@ process_exec (void *f_name) {
 	argument_stack(argv, argc, &_if);
 
 	//hex_dump() 넣기
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
 	
 	
 	/* If load failed, quit. */
@@ -257,11 +260,11 @@ process_wait (tid_t child_tid UNUSED) {
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 	// 무한 대기
-	while(1){}
+	// while(1){}
 	//test용 for문
-	// 	for(int i=0;i<10000000;i++){
+		for(int i=0;i<10000000;i++){
 
-	// }
+	}
 	// return -1;
 }
 
