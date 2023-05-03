@@ -7,6 +7,7 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "threads/synch.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -48,6 +49,7 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+	lock_init(&filesys_lock);
 }
 
 /* The main system call interface */
@@ -103,7 +105,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 	case SYS_SEEK:
-			f->R.rax = seek(f->R.rdi, f->R.rsi);
+			seek(f->R.rdi, f->R.rsi);
 			break;
 	case SYS_TELL:
 			f->R.rax = tell(f->R.rdi);
@@ -130,19 +132,19 @@ exit (int status) {
 	thread_exit();
 }
 
-pid_t
+tid_t
 fork (const char *thread_name){
-	return (pid_t) syscall1 (SYS_FORK, thread_name);
+	return;
 }
 
 int
 exec (const char *file) {
-	return (pid_t) syscall1 (SYS_EXEC, file);
+	return;
 }
 
 int
-wait (pid_t pid) {
-	return syscall1 (SYS_WAIT, pid);
+wait (tid_t pid) {
+	return;
 }
 
 // 파일을 생성하는 syscall
@@ -213,87 +215,154 @@ open (const char *file) {
 	return fd;
 }
 
+//fdt에 넣은 파일을 찾는 함수
+struct file *search_file_from_fdt(int fd) {
+	// 예외처리 : fd가 0보다 작거나 테이블의 범위를 넘어서면 파일이 없는 것임
+	if (fd < 0 || fd >= FDCOUNT) {
+		return NULL;
+	}
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdt;
+
+	struct file *file = fdt[fd];
+	return file;
+}
+
+// 파일 크기 정보 > file : inode > inode_disk : off_t length
 int
 filesize (int fd) {
-	return syscall1 (SYS_FILESIZE, fd);
+	//file.c의 file_length() 활용
+	//fdt에 넣은 파일을 찾는 함수
+	struct file *file = search_file_from_fdt(fd);
+	if (file == NULL) {
+		return -1;
+	}
+	file_length(file);
 }
 
+// 파일의 값을 읽어서 size를 버퍼에 반환하는 함수
 int
 read (int fd, void *buffer, unsigned size) {
-	return syscall3 (SYS_READ, fd, buffer, size);
+	check_address(buffer);
+	struct file *read_file = search_file_from_fdt(fd);
+	unsigned char *buf = buffer; // 읽어들인 데이터를 1바이트 단위로 저장
+	int read_byte;
+	if (read_file == NULL) {
+		return -1;
+	}
+
+	//STDIN(fd = 0)일경우, input_getc()를 이용해 키보드 입력을 읽어옴
+	//STDOUT(fd = 1)일 경우, -1을 반환
+	// 그외, fd로부터 파일을 찾고, size 바이트만큼 파일을 읽어 버퍼에 저장<lock 사용
+	if (fd == STDIN_FILENO) {
+		for(int i = 0; i < size; i++) {
+			char input_key = input_getc(); // 키보드 입력을 저장
+			*buf++ = input_key; // 버퍼에 1바이트씩 넣음
+			if (input_key == '\0') { //엔터값
+				break;
+			}
+		}
+	}
+	else if (fd == STDOUT_FILENO){
+		return -1;
+	}
+	else {
+		lock_acquire(&filesys_lock);
+		read_byte = file_read(read_file, buffer, size);
+		lock_release(&filesys_lock);
+	}
+
+	return read_byte;
 }
 
+// 버퍼로부터 값을 읽어서 파일에 데이터를 작성하는 함수
 int
 write (int fd, const void *buffer, unsigned size) {
-	return syscall3 (SYS_WRITE, fd, buffer, size);
+	check_address(buffer);
+	int write_byte;
+	
+	// STDOUT(fd = 1)일 경우, putbuf로 콘솔에 작성 후 바이트 size 리턴
+	if (fd == STDIN_FILENO) {
+		return -1;
+	}
+	else if (fd == STDOUT_FILENO) {
+		putbuf(buffer, size);
+		return size;
+	}
+	else {
+		struct file *write_file = search_file_from_fdt(fd);		
+		lock_acquire(&filesys_lock);
+		write_byte = file_write(write_file, buffer, size);
+		lock_release(&filesys_lock);
+	}
+	return write_byte;
 }
 
 void
 seek (int fd, unsigned position) {
-	syscall2 (SYS_SEEK, fd, position);
+	//syscall2 (SYS_SEEK, fd, position);
 }
 
-unsigned
-tell (int fd) {
-	return syscall1 (SYS_TELL, fd);
-}
+// unsigned tell (int fd) {
+// 	return;
+// }
 
 void
 close (int fd) {
 	struct thread *curr = thread_current();
 }
 
-int
-dup2 (int oldfd, int newfd){
-	return syscall2 (SYS_DUP2, oldfd, newfd);
-}
+// int
+// dup2 (int oldfd, int newfd){
+// 	return syscall2 (SYS_DUP2, oldfd, newfd);
+// }
 
-void *
-mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
-	return (void *) syscall5 (SYS_MMAP, addr, length, writable, fd, offset);
-}
+// void *
+// mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+// 	return (void *) syscall5 (SYS_MMAP, addr, length, writable, fd, offset);
+// }
 
-void
-munmap (void *addr) {
-	syscall1 (SYS_MUNMAP, addr);
-}
+// void
+// munmap (void *addr) {
+// 	syscall1 (SYS_MUNMAP, addr);
+// }
 
-bool
-chdir (const char *dir) {
-	return syscall1 (SYS_CHDIR, dir);
-}
+// bool
+// chdir (const char *dir) {
+// 	return syscall1 (SYS_CHDIR, dir);
+// }
 
-bool
-mkdir (const char *dir) {
-	return syscall1 (SYS_MKDIR, dir);
-}
+// bool
+// mkdir (const char *dir) {
+// 	return syscall1 (SYS_MKDIR, dir);
+// }
 
-bool
-readdir (int fd, char name[READDIR_MAX_LEN + 1]) {
-	return syscall2 (SYS_READDIR, fd, name);
-}
+// bool
+// readdir (int fd, char name[READDIR_MAX_LEN + 1]) {
+// 	return syscall2 (SYS_READDIR, fd, name);
+// }
 
-bool
-isdir (int fd) {
-	return syscall1 (SYS_ISDIR, fd);
-}
+// bool
+// isdir (int fd) {
+// 	return syscall1 (SYS_ISDIR, fd);
+// }
 
-int
-inumber (int fd) {
-	return syscall1 (SYS_INUMBER, fd);
-}
+// int
+// inumber (int fd) {
+// 	return syscall1 (SYS_INUMBER, fd);
+// }
 
-int
-symlink (const char* target, const char* linkpath) {
-	return syscall2 (SYS_SYMLINK, target, linkpath);
-}
+// int
+// symlink (const char* target, const char* linkpath) {
+// 	return syscall2 (SYS_SYMLINK, target, linkpath);
+// }
 
-int
-mount (const char *path, int chan_no, int dev_no) {
-	return syscall3 (SYS_MOUNT, path, chan_no, dev_no);
-}
+// int
+// mount (const char *path, int chan_no, int dev_no) {
+// 	return syscall3 (SYS_MOUNT, path, chan_no, dev_no);
+// }
 
-int
-umount (const char *path) {
-	return syscall1 (SYS_UMOUNT, path);
-}
+// int
+// umount (const char *path) {
+// 	return syscall1 (SYS_UMOUNT, path);
+// }
