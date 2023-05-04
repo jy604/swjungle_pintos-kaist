@@ -122,22 +122,37 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
 	/* 1. 부모의 page가 kernel page인 경우, 즉시 false 리턴*/
-	
+	if (is_kernel_vaddr(va)) {
+		return false;
+	}
 	/* 2. Resolve VA from the parent's page map level 4. */
 	/* 부모 스레드 내 멤버인 pml4를 이용해 부모 페이지 불러옴*/
 	parent_page = pml4_get_page (parent->pml4, va);
+	if (parent_page == NULL) {
+		return false;
+	}
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
-
+	/* 3. 새로운 PAL_USER 페이지를 할당하고, newpage에 저장*/
+	newpage = palloc_get_page(PAL_USER | PAL_ZERO);
+	if (newpage == NULL) {
+		return false;
+	}
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
+	/* 4. 부모 페이지를 복사해서 3에서 새로 할당받은 페이지에 넣음, 이때
+	부모 페이지가 writable인지 아닌지 확인 -> is_writealbe() 사용*/
+	memcpy(newpage, parent_page, PGSIZE);
+	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		/* 6. 페이지 생성에 실패하면 에러 핸들링이 동작하도록 false 반환*/
+		return false;
 	}
 	return true;
 }
