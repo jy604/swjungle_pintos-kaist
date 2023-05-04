@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include <synch.h>
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -118,10 +119,19 @@ struct thread {
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
 
+	/* project 2 - syscall */
 	int exit_status; //project 2, exit syscall 호출 시 사용됨
 	// struct file *fdt[64];
 	struct file **fdt;
 	int next_fd;
+
+	struct intr_frame parent_if; // userland context를 담은 인터럽트 프레임
+	struct list child_list; // 자식 프로세스 리스트
+	struct list_elem child_elem;
+
+	struct semaphore fork_sema; // fork가 완료될 때 sema_up 수행, process_fork에서 자식 로드 기다릴때 사용
+	struct semaphore free_sema; // 자식 프로세스가 종료될 때까지 부모 프로세스의 대기, 종료 상태 받기 위함
+	struct semaphore wait_sema; // 자식 프로세스가 종료될때까지 대기, 종료 상태 저장
 };
 
 /* If false (default), use round-robin scheduler.

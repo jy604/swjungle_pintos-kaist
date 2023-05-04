@@ -26,6 +26,7 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+struct thread * get_child_process(int pid);
 
 /* General process initializer for initd and other process. */
 static void
@@ -74,13 +75,38 @@ initd (void *f_name) {
 	NOT_REACHED ();
 }
 
+// 자식 리스트에서 pid에 해당하는 자식 스레드를 찾아서 반환하는 함수
+struct thread *get_child_process(int pid) {
+	struct thread *curr = thread_current();
+	struct list *child_list = &curr->child_list;
+	for (struct list_elem *e = list_begin(child_list); e != list_end(child_list); 
+		e = list_next(e)) {
+		struct thread *child_t = list_entry(e, struct thread, child_elem);
+		if (child_t->tid == pid) {
+			return child_t;
+		}
+	}
+	return NULL;
+}
+
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+	struct thread *parent = thread_current();
+	memcpy(&parent->parent_if, if_, sizeof(struct intr_frame)); // 부모의 유저 스택(userland stack) 복사
+
+	// 자식 프로세스 생성
+	tid_t pid = thread_create (name, PRI_DEFAULT, __do_fork, parent);
+
+	if (pid == TID_ERROR) {
+		return TID_ERROR;
+	}
+	// 자식 찾기
+	struct thread *child_t = get_child_process(pid);
+	sema_down(&child_t->fork_sema);
+	return pid;
 }
 
 #ifndef VM
@@ -95,8 +121,10 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
-
+	/* 1. 부모의 page가 kernel page인 경우, 즉시 false 리턴*/
+	
 	/* 2. Resolve VA from the parent's page map level 4. */
+	/* 부모 스레드 내 멤버인 pml4를 이용해 부모 페이지 불러옴*/
 	parent_page = pml4_get_page (parent->pml4, va);
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
