@@ -192,21 +192,22 @@ thread_create (const char *name, int priority,
 	t = palloc_get_page (PAL_ZERO);
 	if (t == NULL)
 		return TID_ERROR;
-	/*project 2
-	fdtable을 페이지에 새로 할당해줘야함 (**fdt를 쓸 경우) */
-	t->fdt = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
-	if (t->fdt == NULL) {
-		return TID_ERROR;
-	}
-
-	/*project 2 syscall fdt 초기화*/
-	t->next_fd = 2;
-	t->fdt[0] = 1; //STDIN
-	t->fdt[1] = 2; //STDOUT
-
+	/////////////////////
 	/* Initialize thread. */
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
+
+	/*project 2
+	fdtable을 페이지에 새로 할당해줘야함 (**fdt를 쓸 경우) */
+	t->fdt = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+		// if (t->fdt == NULL) {
+	// 	return TID_ERROR;
+	// }
+
+	/*project 2 syscall fdt 초기화*/
+	t->next_fd = 2;
+	// t->fdt[0] = 1; //STDIN
+	// t->fdt[1] = 2; //STDOUT
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */

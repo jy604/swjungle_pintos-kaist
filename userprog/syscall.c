@@ -11,11 +11,13 @@
 #include "intrinsic.h"
 #include "threads/synch.h"
 #include "threads/palloc.h"
+#include "include/filesys/filesys.h"
+#include "include/filesys/file.h"
 int add_file_to_fdt(struct file *file);
 
 void halt(void);
 void exit(int status);
-pid_t fork (const char *thread_name, struct intr_frame *f);
+pid_t _fork (const char *thread_name, struct intr_frame *f);
 int exec (const char *file);
 int wait (tid_t pid);
 bool create (const char *file, unsigned initial_size);
@@ -100,7 +102,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			exit(f->R.rdi);
 			break;
 	case SYS_FORK:
-			f->R.rax = fork(f->R.rdi, f);
+			f->R.rax = _fork(f->R.rdi, f);
 			break;
 	case SYS_EXEC:
 			exec(f->R.rdi);
@@ -136,7 +138,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			close(f->R.rdi);
 			break; 
 	default:
-		thread_exit();
+		exit(-1); ///////
+		break;
 	}
 }
 
@@ -154,21 +157,21 @@ exit (int status) {
 	thread_exit();
 }
 
-pid_t fork (const char *thread_name, struct intr_frame *f) {
-	check_address(thread_name);
+pid_t _fork (const char *thread_name, struct intr_frame *f) {
+	// check_address(thread_name);
 	return process_fork(thread_name, f);
 }
 
 // 현재 실행중인 프로세스를 cmd_line에 지정된 실행 파일로 변경하고 인수 전달
-int exec (const char *cmd_line) {
-	check_address(cmd_line);
+int exec (const char *file) {
+	check_address(file);
 
-	int size = strlen(cmd_line) + 1; // null 값 포함한 파일 사이즈
+	int size = strlen(file) + 1; // null 값 포함한 파일 사이즈
 	char *fn_copy = palloc_get_page(PAL_ZERO);
 	if ((fn_copy) == NULL) {
 		exit(-1);
 	}
-	strlcpy(fn_copy, cmd_line, size);
+	strlcpy(fn_copy, file, size);
 
 	if (process_exec(fn_copy) == -1) {
 		return -1;
@@ -186,22 +189,12 @@ wait (pid_t pid) {
 // 파일을 생성하는 syscall
 bool create (const char *file, unsigned initial_size) {
 	check_address(file);
-		if (filesys_create(file, initial_size)) {
-		return true;
-	}
-	else {
-		return false;
-	}
+	return filesys_create(file, initial_size);
 }
 
 bool remove (const char *file) {
 	check_address(file);
-	if (filesys_remove(file)) {
-		return true;
-	}
-	else {
-		return false;
-	}
+	return filesys_remove(file);
 }
 
 // int add_file_to_fdt (struct file *f){
@@ -218,23 +211,37 @@ bool remove (const char *file) {
 
 // 현재 프로세스의 fdt에 파일을 넣는 함수
 int add_file_to_fdt(struct file *file) {
-	struct thread *curr = thread_current();
-	struct file **fdt = curr->fdt;
-	int fd = curr->next_fd;
+	// struct thread *curr = thread_current();
+	// struct file **fdt = curr->fdt;
+	// int fd = curr->next_fd;
 
-	//fdt테이블에서 2부터 탐색하면서 null값을 만나면 거기에 fdt테이블이 open_file을 가리키게끔 해줌
-	// 함수
-	while (curr->fdt[fd] != NULL && fd < FDCOUNT) {
-		fd++;
-	}
-	//fdt가 가득 찼으면
-	if (fd >= FDCOUNT)
-		return -1;
+	// //fdt테이블에서 2부터 탐색하면서 null값을 만나면 거기에 fdt테이블이 open_file을 가리키게끔 해줌
+	// // 함수
+	// while (curr->fdt[fd] != NULL && fd < FDCOUNT) {
+	// 	fd++;
+	// }
+	// //fdt가 가득 찼으면
+	// if (fd >= FDCOUNT)
+	// 	return -1;
 	
-	curr->next_fd = fd;
-	fdt[fd] = file;
+	// curr->next_fd = fd;
+	// fdt[fd] = file;
 
-	return fd;
+	// return fd;
+
+	struct thread *curr = thread_current();
+  //파일 디스크립터 테이블에서 비어있는 자리를 찾습니다.
+	while (curr->next_fd < FDCOUNT  && curr->fdt[curr->next_fd] != NULL) {
+		curr->next_fd++;
+	}
+
+	// 파일 디스크립터 테이블이 꽉 찬 경우 에러를 반환
+	if (curr->next_fd >= FDCOUNT ) {
+		return -1;
+	}
+
+	curr->fdt[curr->next_fd] = file;
+	return curr->next_fd;
 
 	// for (fd = 0; siezof(fdt); fd++) {
 	// 	if (fdt[fd] == NULL) {
@@ -243,8 +250,7 @@ int add_file_to_fdt(struct file *file) {
 	// }
 }
 
-int
-open (const char *file) {
+int open (const char *file) {
 	check_address(file);
 	struct file *open_file = filesys_open(file);
 	
@@ -283,65 +289,92 @@ filesize (int fd) {
 	if (file == NULL) {
 		return -1;
 	}
-	file_length(file);
+	return file_length(file);
 }
 
 // 파일의 값을 읽어서 size를 버퍼에 반환하는 함수
 int
 read (int fd, void *buffer, unsigned size) {
-	check_address(buffer);
-	struct file *read_file = search_file_from_fdt(fd);
-	unsigned char *buf = buffer; // 읽어들인 데이터를 1바이트 단위로 저장
-	int read_byte;
-	if (read_file == NULL) {
-		return -1;
-	}
-
-	//STDIN(fd = 0)일경우, input_getc()를 이용해 키보드 입력을 읽어옴
-	//STDOUT(fd = 1)일 경우, -1을 반환
-	// 그외, fd로부터 파일을 찾고, size 바이트만큼 파일을 읽어 버퍼에 저장<lock 사용
-	if (fd == STDIN_FILENO) {
-		for(int i = 0; i < size; i++) {
-			char input_key = input_getc(); // 키보드 입력을 저장
-			*buf++ = input_key; // 버퍼에 1바이트씩 넣음
-			if (input_key == '\0') { //엔터값
-				break;
-			}
-		}
-	}
-	else if (fd == STDOUT_FILENO){
-		return -1;
-	}
-	else {
-		lock_acquire(&filesys_lock);
-		read_byte = file_read(read_file, buffer, size);
+	// check_address(buffer);
+	lock_acquire(&filesys_lock);
+	if(fd == 0){
+		input_getc();
 		lock_release(&filesys_lock);
+		return size;
 	}
+  	struct file *fileobj= search_file_from_fdt(fd);
+	size = file_read(fileobj,buffer,size);
+	lock_release(&filesys_lock);	
+	return size;
 
-	return read_byte;
+	// struct file *read_file = search_file_from_fdt(fd);
+	// unsigned char *buf = buffer; // 읽어들인 데이터를 1바이트 단위로 저장
+	// int read_byte;
+	// if (read_file == NULL) {
+	// 	return -1;
+	// }
+
+	// //STDIN(fd = 0)일경우, input_getc()를 이용해 키보드 입력을 읽어옴
+	// //STDOUT(fd = 1)일 경우, -1을 반환
+	// // 그외, fd로부터 파일을 찾고, size 바이트만큼 파일을 읽어 버퍼에 저장<lock 사용
+	// if (fd == STDIN_FILENO) {
+	// 	for(int i = 0; i < size; i++) {
+	// 		char input_key = input_getc(); // 키보드 입력을 저장
+	// 		*buf++ = input_key; // 버퍼에 1바이트씩 넣음
+	// 		if (input_key == '\0') { //엔터값
+	// 			break;
+	// 		}
+	// 	}
+	// }
+	// else if (fd == STDOUT_FILENO){
+	// 	return -1;
+	// }
+	// else {
+	// 	lock_acquire(&filesys_lock);
+	// 	read_byte = file_read(read_file, buffer, size);
+	// 	lock_release(&filesys_lock);
+	// }
+
+	// return read_byte;
 }
 
 // 버퍼로부터 값을 읽어서 파일에 데이터를 작성하는 함수
 int
 write (int fd, const void *buffer, unsigned size) {
-	check_address(buffer);
-	int write_byte;
-	
-	// STDOUT(fd = 1)일 경우, putbuf로 콘솔에 작성 후 바이트 size 리턴
-	if (fd == STDIN_FILENO) {
-		return -1;
-	}
-	else if (fd == STDOUT_FILENO) {
-		putbuf(buffer, size);
+	lock_acquire(&filesys_lock);
+	if(fd == 1){
+		 putbuf(buffer, size);  //문자열을 화면에 출력해주는 함수
+		//putbuf(): 버퍼 안에 들어있는 값 중 사이즈 N만큼을 console로 출력
+		lock_release(&filesys_lock);
 		return size;
 	}
-	else {
-		struct file *write_file = search_file_from_fdt(fd);		
-		lock_acquire(&filesys_lock);
-		write_byte = file_write(write_file, buffer, size);
+	struct file *fileobj= search_file_from_fdt(fd);
+	if(fileobj == NULL){
 		lock_release(&filesys_lock);
+		return -1;
 	}
-	return write_byte;
+	
+	size = file_write(fileobj,buffer,size);
+	lock_release(&filesys_lock);
+	return size;
+	// check_address(buffer);
+	// int write_byte;
+	
+	// // STDOUT(fd = 1)일 경우, putbuf로 콘솔에 작성 후 바이트 size 리턴
+	// if (fd == STDIN_FILENO) {
+	// 	return -1;
+	// }
+	// else if (fd == STDOUT_FILENO) {
+	// 	putbuf(buffer, size);
+	// 	return size;
+	// }
+	// else {
+	// 	struct file *write_file = search_file_from_fdt(fd);		
+	// 	lock_acquire(&filesys_lock);
+	// 	write_byte = file_write(write_file, buffer, size);
+	// 	lock_release(&filesys_lock);
+	// }
+	// return write_byte;
 }
 
 // 열린 파일의 위치(offset)를 이동하는 syscall
@@ -383,70 +416,17 @@ void fdt_remove_file(int fd) {
 // 파일 닫고 fd 제거
 void
 close (int fd) {
+	// struct thread *curr = thread_current();
+	// struct file *file = search_file_from_fdt(fd);
+
+	// if (fd <= STDOUT_FILENO) {
+	// 	return;
+	// }
+
+	// fdt_remove_file(fd);
+
+	// file_close(file);
 	struct thread *curr = thread_current();
-	struct file *file = search_file_from_fdt(fd);
-
-	if (fd <= STDOUT_FILENO) {
-		return;
-	}
-
-	fdt_remove_file(fd);
-
-	file_close(file);
+	curr->fdt[fd] = 0;
 	
 }
-
-// int
-// dup2 (int oldfd, int newfd){
-// 	return syscall2 (SYS_DUP2, oldfd, newfd);
-// }
-
-// void *
-// mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
-// 	return (void *) syscall5 (SYS_MMAP, addr, length, writable, fd, offset);
-// }
-
-// void
-// munmap (void *addr) {
-// 	syscall1 (SYS_MUNMAP, addr);
-// }
-
-// bool
-// chdir (const char *dir) {
-// 	return syscall1 (SYS_CHDIR, dir);
-// }
-
-// bool
-// mkdir (const char *dir) {
-// 	return syscall1 (SYS_MKDIR, dir);
-// }
-
-// bool
-// readdir (int fd, char name[READDIR_MAX_LEN + 1]) {
-// 	return syscall2 (SYS_READDIR, fd, name);
-// }
-
-// bool
-// isdir (int fd) {
-// 	return syscall1 (SYS_ISDIR, fd);
-// }
-
-// int
-// inumber (int fd) {
-// 	return syscall1 (SYS_INUMBER, fd);
-// }
-
-// int
-// symlink (const char* target, const char* linkpath) {
-// 	return syscall2 (SYS_SYMLINK, target, linkpath);
-// }
-
-// int
-// mount (const char *path, int chan_no, int dev_no) {
-// 	return syscall3 (SYS_MOUNT, path, chan_no, dev_no);
-// }
-
-// int
-// umount (const char *path) {
-// 	return syscall1 (SYS_UMOUNT, path);
-// }

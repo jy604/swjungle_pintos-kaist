@@ -121,7 +121,6 @@ struct thread {
 
 	/* project 2 - syscall */
 	int exit_status; //project 2, exit syscall 호출 시 사용됨
-	// struct file *fdt[64];
 	struct file **fdt;
 	int next_fd;
 
@@ -132,6 +131,8 @@ struct thread {
 	struct semaphore fork_sema; // fork가 완료될 때 sema_up 수행, process_fork에서 자식 로드 기다릴때 사용
 	struct semaphore free_sema; // 자식 프로세스가 종료될 때까지 부모 프로세스의 대기, 종료 상태 받기 위함
 	struct semaphore wait_sema; // 자식 프로세스가 종료될때까지 대기, 종료 상태 저장
+	
+	struct file *running;
 };
 
 /* If false (default), use round-robin scheduler.
