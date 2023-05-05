@@ -195,13 +195,33 @@ __do_fork (void *aux) {
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 
+	if (parent->next_fd == FDCOUNT) {
+		goto error;
+	}
+
+	current->fdt[0] = parent->fdt[0]; // stdin
+	current->fdt[1] = parent->fdt[1]; // stdout
+	
+	for (int fd = 2; fd < FDCOUNT; fd++) {
+		struct file *file = parent->fdt[fd];
+		if (file = NULL) {
+			continue; // 건너뜀
+		}
+		current->fdt[fd] = file_duplicate(file); // 부모의 파일 테이블 복사
+	}
+	current->next_fd = parent->next_fd;
+	sema_up(&current->fork_sema);
+	if_.R.rax = 0; //fork의 결과로 자식은 0을 반환함
 	process_init ();
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
 error:
-	thread_exit ();
+	current->exit_status = TID_ERROR;
+	sema_up(&current->fork_sema); ////////////////////////////
+	exit(TID_ERROR);
+	// thread_exit (); /////////////////////////////
 }
 
 // 유저 스택에 프로그램 이름과 인자를 저장하는 함수
