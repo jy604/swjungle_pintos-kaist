@@ -10,11 +10,12 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "threads/synch.h"
+#include "threads/palloc.h"
 int add_file_to_fdt(struct file *file);
 
 void halt(void);
 void exit(int status);
-tid_t fork (const char *thread_name);
+pid_t fork (const char *thread_name, struct intr_frame *f);
 int exec (const char *file);
 int wait (tid_t pid);
 bool create (const char *file, unsigned initial_size);
@@ -99,7 +100,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			exit(f->R.rdi);
 			break;
 	case SYS_FORK:
-			f->R.rax = fork(f->R.rdi);
+			f->R.rax = fork(f->R.rdi, f);
 			break;
 	case SYS_EXEC:
 			exec(f->R.rdi);
@@ -153,19 +154,33 @@ exit (int status) {
 	thread_exit();
 }
 
-pid_t
-fork (const char *thread_name){
-	return;
+pid_t fork (const char *thread_name, struct intr_frame *f) {
+	check_address(thread_name);
+	return process_fork(thread_name, f);
 }
 
-int
-exec (const char *file) {
-	return;
+// 현재 실행중인 프로세스를 cmd_line에 지정된 실행 파일로 변경하고 인수 전달
+int exec (const char *cmd_line) {
+	check_address(cmd_line);
+
+	int size = strlen(cmd_line) + 1; // null 값 포함한 파일 사이즈
+	char *fn_copy = palloc_get_page(PAL_ZERO);
+	if ((fn_copy) == NULL) {
+		exit(-1);
+	}
+	strlcpy(fn_copy, cmd_line, size);
+
+	if (process_exec(fn_copy) == -1) {
+		return -1;
+	}
+
+	NOT_REACHED();
+	return 0;
 }
 
 int
 wait (pid_t pid) {
-	return;
+	process_wait(pid);
 }
 
 // 파일을 생성하는 syscall
