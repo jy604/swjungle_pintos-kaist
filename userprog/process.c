@@ -26,66 +26,56 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
-void argument_stack(char **argv, int argc, void **rsp);
+void argument_stack(char **argv , int argc ,struct intr_frame *if_);
 struct thread *get_child_process(int pid);
 
-/*------project2 추가함수--------*/
+// project 2 fork 관련 함수
 struct thread *get_child_process(int pid){
-	/* 자식 리스트에 접근하여 프로세스 디스크립터 검색 */
-/* 해당 pid가 존재하면 프로세스 디스크립터 반환 */
-/* 리스트에 존재하지 않으면 NULL 리턴 */
+// 자식 리스트에서 pid에 해당하는 자식 스레드를 찾아서 반환하는 함수
 	struct thread *curr = thread_current();
-	struct list *childList = &curr->child_list;
-
-	for(struct list_elem *e = list_begin(childList); e!= list_end(childList); e=list_next(e)){
-		struct thread *tmp_t = list_entry(e,struct thread, child_elem);
-		if(tmp_t->tid == pid){
-			return tmp_t;
+	struct list *child_list = &curr->child_list;
+	for (struct list_elem *e = list_begin(child_list); e != list_end(child_list); 
+		e = list_next(e)) {
+		struct thread *child_t = list_entry(e, struct thread, child_elem);
+		if (child_t->tid == pid) {
+			return child_t;
 		}
 	}
 	return NULL;
 }
-struct file *process_get_file (int fd){
+
+struct file *search_file_to_fdt (int fd){
 	struct thread *curr = thread_current();
-	/* 파일 디스크립터에 해당하는 파일 객체를 리턴 */
-	if(curr->fdt[fd] != NULL){
-		return curr->fdt[fd];
+	if (fd < 0 || fd >= FDCOUNT_LIMIT) {
+		return NULL;
 	}
-	return NULL;	/* 없을 시 NULL 리턴 */
+	return curr->fdt[fd];
 }
-int process_add_file (struct file *f){
-/* 파일 객체를 파일 디스크립터 테이블에 추가*/
-	// struct thread *curr = thread_current();
-	// int fd = curr->next_fd;
-	
-	// if(fd >64){ //크기 지정 어캐하징.
-	// 	return -1;
-	// }
-	// curr->fdt[fd] = f;
-	// curr->next_fd +=1;
-	// return curr->next_fd; /* 파일 디스크립터 리턴 */
+
+int add_file_to_fdt (struct file *file){
 	struct thread *curr = thread_current();
-  //파일 디스크립터 테이블에서 비어있는 자리를 찾습니다.
-	while (curr->next_fd < FDCOUNT_LIMIT  && curr->fdt[curr->next_fd] != NULL) {
+
+	//fdt테이블에서 2부터 탐색하면서 null값을 만나면 거기에 fdt테이블이 open_file을 가리키게끔 해줌
+	// 함수
+	while (curr->fdt[curr->next_fd] != NULL && curr->next_fd < FDCOUNT_LIMIT) {
 		curr->next_fd++;
 	}
-
-	// 파일 디스크립터 테이블이 꽉 찬 경우 에러를 반환
-	if (curr->next_fd >= FDCOUNT_LIMIT ) {
+	//fdt가 가득 찼으면
+	if (curr->next_fd >= FDCOUNT_LIMIT) {
 		return -1;
 	}
+	curr->fdt[curr->next_fd] = file;
 
-	curr->fdt[curr->next_fd] = f;
 	return curr->next_fd;
 }
 
-void process_close_file(int fd){
-	struct thread *curr = thread_current();
-/* 파일 디스크립터에 해당하는 파일을 닫음 */
-	file_close(curr->fdt[fd]);
-/* 파일 디스크립터 테이블 해당 엔트리 초기화 */
-	curr->fdt[fd] =0;
-}
+// void process_close_file(int fd){
+// 	struct thread *curr = thread_current();
+// /* 파일 디스크립터에 해당하는 파일을 닫음 */
+// 	file_close(curr->fdt[fd]);
+// /* 파일 디스크립터 테이블 해당 엔트리 초기화 */
+// 	curr->fdt[fd] =0;
+// }
 
 
 /* General process initializer for initd and other process. */
@@ -220,7 +210,7 @@ __do_fork (void *aux) {
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
-	if_.R.rax = 0; // ?????????????
+	if_.R.rax = 0; // do_fork할때, 자식이 부모를 cp하고 인터럽트 프레임을 올리기 전에 rax를 0으로 바꿔야 테케 통과(안바꾸면 syscall 번호 그대로 받아서 fail)
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -285,7 +275,8 @@ process_exec (void *f_name) {
 	bool success;
 	char *token, *save_ptr;
 	char *argv[128];
-	int argc;
+	int argc = 0;
+
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
@@ -294,31 +285,31 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
-	argc = 0;
-	for(token = strtok_r(file_name," ", &save_ptr); token != NULL;){
-		argv[argc]= token;
-		token = strtok_r (NULL, " ", &save_ptr);
-		argc = argc+1;
-	}
+	memset(argv,NULL,sizeof(argv));
 
-	file_name = argv[0];
+	for(token = strtok_r(file_name," ", &save_ptr); token != NULL;){
+        //printf ("'%s'\n", token);
+		argv[argc] = token;
+        token = strtok_r (NULL, " ", &save_ptr);
+		argc++;
+    }
+
+	// file_name = argv[0];
 	/* We first kill the current context */
 	process_cleanup ();
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
-	void **rspp = &_if.rsp;
-	argument_stack(argv, argc, &_if.rsp);
-	_if.R.rdi = argc;
-	_if.R.rsi = *rspp + sizeof(void *);
 
-	//hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
 	/* If load failed, quit. */
 	if (!success){
 		palloc_free_page (file_name);
 		return -1;
 	}
+	
+	argument_stack(argv, argc, &_if);
 
 	palloc_free_page (file_name);
 
@@ -327,34 +318,75 @@ process_exec (void *f_name) {
 	NOT_REACHED ();
 }
 
-void argument_stack(char **argv, int argc, void **rsp){ 
-//함수 호출 규약에 따라 유저 스택에 프로그램 이름과 인자들을 저장
+// 유저 스택에 프로그램 이름과 인자를 저장하는 함수
+// argv : 프로그램 이름과 인자가 저장되어 있는 메모리 공간
+// argc : 인자의 개수
+// intr_frame *if_: 인터럽트 프레임
+void argument_stack(char **argv , int argc ,struct intr_frame *if_) {
+	uint8_t padding;
 
-	for(int i = argc-1; i >=0; i--){
-		*rsp = *rsp - (strlen(argv[i])+1);//'\0'포함, rsp(스택포인터이동)
-		memcpy(*rsp,argv[i], strlen(argv[i])+1);// arg 스택에 복사
-		argv[i] = (char *)*rsp;
+	//1. for문으로 argv를 넣는다 (거꾸로이므로 -1로)
+	for (int i = argc - 1; i > -1 ; i--) {
+		int arg_len = strlen(argv[i]);
+		if_->rsp = if_->rsp - arg_len - 1;
+		strlcpy(if_->rsp, argv[i], arg_len + 1);
+		argv[i] = (char*)if_->rsp;
 	}
 
-	if((uintptr_t)*rsp % 8 != 0){
-		uintptr_t padding = (uintptr_t)*rsp % 8; //uintptr_t padding = 8-(uintptr_t)*rsp % 8;
-		*rsp = *rsp-padding;
-		memset(*rsp,0,padding);
+	// padding 넣기 = 8의 배수가 아니면 남은 수 만큼 패딩을 넣어줘야함
+	if (if_->rsp % 8 != 0) {
+		padding = if_->rsp % 8;
+		if_->rsp = if_->rsp - padding;
+		memset(if_->rsp, 0, padding);
 	}
 
-	// null 넣기
-	*rsp = (void*)((uintptr_t)*rsp - 8);
-	*(char **)*rsp = 0;
-
-	for(int i = argc-1; i>=0; i--){
-		*rsp = (void*)((uintptr_t)*rsp - 8);
-		*(char **)*rsp = argv[i];
+	// argv address 넣기
+	for (int i = argc; i >= 0; i--) {
+		if_->rsp = if_->rsp - sizeof(char *);
+		if (i == argc) {
+			memset(if_->rsp, 0, sizeof(char*));
+		}
+		memcpy(if_->rsp, &argv[i], sizeof(char *));
 	}
 
-	//return address
-	*rsp = (void*)((uintptr_t)*rsp - 8);
-	**(char **)rsp = 0; //**(char **)rsp = 0;
-} 
+	//return address 넣기
+	if_->rsp = if_->rsp - sizeof(char *);
+	memset(if_->rsp, 0, sizeof(char*));
+
+	if_->R.rdi = argc;
+	if_->R.rsi = if_->rsp + sizeof(void*);
+
+}
+// 설--------------------------------------------------------
+// void argument_stack(char **argv, int argc, void **rsp){ 
+// //함수 호출 규약에 따라 유저 스택에 프로그램 이름과 인자들을 저장
+
+// 	for(int i = argc-1; i >=0; i--){
+// 		*rsp = *rsp - (strlen(argv[i])+1);//'\0'포함, rsp(스택포인터이동)
+// 		memcpy(*rsp,argv[i], strlen(argv[i])+1);// arg 스택에 복사
+// 		argv[i] = (char *)*rsp;
+// 	}
+
+// 	if((uintptr_t)*rsp % 8 != 0){
+// 		uintptr_t padding = (uintptr_t)*rsp % 8; //uintptr_t padding = 8-(uintptr_t)*rsp % 8;
+// 		*rsp = *rsp-padding;
+// 		memset(*rsp,0,padding);
+// 	}
+
+// 	// null 넣기
+// 	*rsp = (void*)((uintptr_t)*rsp - 8);
+// 	*(char **)*rsp = 0;
+
+// 	for(int i = argc-1; i>=0; i--){
+// 		*rsp = (void*)((uintptr_t)*rsp - 8);
+// 		*(char **)*rsp = argv[i];
+// 	}
+
+// 	//return address
+// 	*rsp = (void*)((uintptr_t)*rsp - 8);
+// 	**(char **)rsp = 0; //**(char **)rsp = 0;
+// } 
+// 설 ---------------------------------------------------------------
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an

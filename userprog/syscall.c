@@ -66,7 +66,10 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-    switch (f->R.rax) // rax는 system call number이다.
+
+	uint64_t sys_number = f->R.rax;
+	
+    switch (sys_number) // rax는 system call number이다.
     {
 	case SYS_HALT:
         halt();
@@ -78,7 +81,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
         f->R.rax = fork(f->R.rdi, f);
         break;
     case SYS_EXEC:
-        exec(f->R.rdi);
+        f->R.rax = exec(f->R.rdi);
         break;
     case SYS_WAIT:
         f->R.rax = process_wait(f->R.rdi);
@@ -154,9 +157,11 @@ exit state -1을 반환하며 프로세스가 종료됩니다.
 	NOT_REACHED();
 	return 0;
 }
+
 int wait (tid_t pid){
 	return process_wait(pid);
 }
+
 bool create(const char *file, unsigned initial_size){
 	check_address(file);
 	return filesys_create(file,initial_size);
@@ -176,7 +181,7 @@ int open (const char *file){
 	struct file *fileobj = filesys_open(file);
 	if(fileobj == NULL)
 		return -1;
-	int fd = process_add_file(fileobj);
+	int fd = add_file_to_fdt(fileobj);
 	if(fd == -1) //fd table 꽉참
 		file_close(fileobj);
 	return fd;
@@ -184,7 +189,7 @@ int open (const char *file){
 
 int filesize (int fd){
 /* 파일 디스크립터를 이용하여 파일 객체 검색 */
-  struct file *fileobj= process_get_file(fd);
+  struct file *fileobj= search_file_to_fdt(fd);
   if(fileobj == NULL){ /* 해당 파일이 존재하지 않으면 -1 리턴 */
 	return -1;
   }
@@ -204,7 +209,7 @@ int read (int fd, void *buffer, unsigned size) {
 		lock_release(&filesys_lock);
 		return size;
 	}
-  	struct file *fileobj= process_get_file(fd);
+  	struct file *fileobj= search_file_to_fdt(fd);
 	size = file_read(fileobj,buffer,size);
 	lock_release(&filesys_lock);	
 	return size;
@@ -224,7 +229,7 @@ int write (int fd, const void *buffer, unsigned size) {
 		lock_release(&filesys_lock);
 		return size;
 	}
-	struct file *fileobj= process_get_file(fd);
+	struct file *fileobj= search_file_to_fdt(fd);
 	if(fileobj == NULL){
 		lock_release(&filesys_lock);
 		return -1;
@@ -237,14 +242,14 @@ int write (int fd, const void *buffer, unsigned size) {
 
 void seek (int fd, unsigned position) {
 	/* 파일 디스크립터를 이용하여 파일 객체 검색 */
-	struct file *fileobj = process_get_file(fd);
+	struct file *fileobj = search_file_to_fdt(fd);
 	file_seek(fileobj, position);
 /* 해당 열린 파일의 위치(offset)를 position만큼 이동 */
 }
 
 unsigned tell (int fd) {
 	/* 파일 디스크립터를 이용하여 파일 객체 검색 */
-	struct file *fileobj = process_get_file(fd);
+	struct file *fileobj = search_file_to_fdt(fd);
 	file_tell(fileobj);
 /* 해당 열린 파일의 위치를 반환 */
 }
