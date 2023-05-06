@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "process.h": "c",
+        "*.inc": "c",
+        "malloc.h": "c",
+        "file.h": "c",
+        "inode.h": "c",
+        "syscall.h": "c",
+        "synch.h": "c"
+    }
+}

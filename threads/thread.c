@@ -11,6 +11,11 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+
+#include "threads/malloc.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -196,6 +201,17 @@ thread_create (const char *name, int priority,
 	/* Initialize thread. */
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
+
+	/*project 2
+	fdtable을 페이지에 새로 할당해줘야함 (**fdt를 쓸 경우) */
+	// t->fdt = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+	// 수현 calloc
+	t->fdt = calloc(64, sizeof(struct file *));
+
+	/*project 2 syscall fdt 초기화*/
+	t->next_fd = 2;
+	// t->fdt[0] = 1; //STDIN
+	// t->fdt[1] = 2; //STDOUT
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -436,6 +452,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->origin_priority = priority;
 	t->waiting_lock = NULL;
 	list_init(&t->donation_list);
+
+	t->exit_status = 0;
 }
 
 bool priority_ready_list(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {

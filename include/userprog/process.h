@@ -9,6 +9,11 @@ int process_exec (void *f_name);
 int process_wait (tid_t);
 void process_exit (void);
 void process_activate (struct thread *next);
-void argument_stack(char **argv , int argc ,struct intr_frame *if_);
 
+struct file *search_file_to_fdt(int fd);
+int add_file_to_fdt(struct file *file);
+// struct file *process_get_file (int fd);
+// int process_add_file (struct file *f);
+void process_close_file(int fd);
+void argument_stack(char **argv , int argc ,struct intr_frame *if_);
 #endif /* userprog/process.h */

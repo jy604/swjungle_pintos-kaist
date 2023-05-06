@@ -27,12 +27,87 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
+
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
 }
 
+struct file *search_file_to_fdt(int fd) {
+	struct thread *curr = thread_current();
+	// if (fd < 0 || fd >= FDCOUNT_LIMIT) {
+	// 	return NULL;
+	// }
+	// return curr->fdt[fd];
+	if(curr->fdt[fd] != NULL){
+		return curr->fdt[fd];
+	}
+	return NULL;	/* 없을 시 NULL 리턴 */
+}
+
+// 설--------------------------------------------------
+// struct file *process_get_file (int fd){
+// 	struct thread *curr = thread_current();
+// 	/* 파일 디스크립터에 해당하는 파일 객체를 리턴 */
+// 	if(curr->fdt[fd] != NULL){
+// 		return curr->fdt[fd];
+// 	}
+// 	return NULL;	/* 없을 시 NULL 리턴 */
+// }
+// 현재 프로세스의 fdt에 파일을 넣는 함수
+int add_file_to_fdt(struct file *file) {
+	struct thread *curr = thread_current();
+	// struct file **fdt = curr->fdt;
+	// int fd = curr->next_fd;
+
+	//fdt테이블에서 2부터 탐색하면서 null값을 만나면 거기에 fdt테이블이 open_file을 가리키게끔 해줌
+	// 함수
+	while (curr->fdt[curr->next_fd] != NULL && curr->next_fd < FDCOUNT_LIMIT) {
+		curr->next_fd++;
+	}
+	//fdt가 가득 찼으면
+	if (curr->next_fd >= FDCOUNT_LIMIT) {
+		return -1;
+	}
+	curr->fdt[curr->next_fd] = file;
+
+	return curr->next_fd;
+}
+// 설---------------------------------------------
+// int process_add_file (struct file *f){
+/* 파일 객체를 파일 디스크립터 테이블에 추가*/
+	// struct thread *curr = thread_current();
+	// int fd = curr->next_fd;
+	
+	// if(fd >64){ //크기 지정 어캐하징.
+	// 	return -1;
+	// }
+	// curr->fdt[fd] = f;
+	// curr->next_fd +=1;
+	// return curr->next_fd; /* 파일 디스크립터 리턴 */
+// 	struct thread *curr = thread_current();
+//   //파일 디스크립터 테이블에서 비어있는 자리를 찾습니다.
+// 	while (curr->next_fd < FDCOUNT  && curr->fdt[curr->next_fd] != NULL) {
+// 		curr->next_fd++;
+// 	}
+
+// 	// 파일 디스크립터 테이블이 꽉 찬 경우 에러를 반환
+// 	if (curr->next_fd >= FDCOUNT ) {
+// 		return -1;
+// 	}
+
+// 	curr->fdt[curr->next_fd] = f;
+// 	return curr->next_fd;
+// }
+
+void process_close_file(int fd){
+	struct thread *curr = thread_current();
+/* 파일 디스크립터에 해당하는 파일을 닫음 */
+	file_close(curr->fdt[fd]);
+/* 파일 디스크립터 테이블 해당 엔트리 초기화 */
+	curr->fdt[fd] =0;
+}
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
  * The new thread may be scheduled (and may even exit)
  * before process_create_initd() returns. Returns the initd's
@@ -50,6 +125,9 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	// 파싱
+	char *save_ptr;
+	file_name = strtok_r(file_name," ", &save_ptr);
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -198,6 +276,7 @@ void argument_stack(char **argv , int argc ,struct intr_frame *if_) {
 
 }
 
+
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
@@ -222,6 +301,7 @@ process_exec (void *f_name) {
         token = strtok_r (NULL, " ", &save_ptr);
 		argc++;
     }
+	file_name = argv[0];
 	/* We first kill the current context */
 	process_cleanup ();
 
@@ -230,13 +310,15 @@ process_exec (void *f_name) {
 	argument_stack(argv, argc, &_if);
 
 	//hex_dump() 넣기
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
 	
 	
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
-	if (!success)
+	if (!success) {
+		palloc_free_page (file_name);
 		return -1;
+	}
+	palloc_free_page (file_name);
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -257,12 +339,12 @@ process_wait (tid_t child_tid UNUSED) {
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 	// 무한 대기
-	while(1){}
+	// while(1){}
 	//test용 for문
-	// 	for(int i=0;i<10000000;i++){
+		for(int i=0;i<10000000;i++){
 
-	// }
-	// return -1;
+	}
+	return -1;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -273,7 +355,11 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-
+	// palloc_free_multiple(curr->fdt,FDT_PAGES);
+	for (int i = 2; i < 64; i++){
+		free(curr->fdt[i]);	
+	}
+	
 	process_cleanup ();
 }
 
