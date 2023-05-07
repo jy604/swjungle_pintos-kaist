@@ -23,7 +23,7 @@ void check_address(void *addr);
 void half(void);
 void exit(int status);
 tid_t fork (const char *thread_name,struct intr_frame *f);
-int exec (const char *file);
+int exec (const char *cmd_line);
 int wait (tid_t pid);
 bool create(const char *file, unsigned initial_size);
 bool remove(const char *file);
@@ -69,133 +69,186 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 	uint64_t sys_number = f->R.rax;
 	
-    switch (sys_number) // rax는 system call number이다.
+    switch (sys_number)
     {
-	case SYS_HALT:
-        halt();
-        break;
-    case SYS_EXIT:
-        exit(f->R.rdi); //실행할 때 첫번째 인자가 R.rdi에 저장됨
-        break;
-    case SYS_FORK:
-        f->R.rax = fork(f->R.rdi, f);
-        break;
-    case SYS_EXEC:
-        f->R.rax = exec(f->R.rdi);
-        break;
-    case SYS_WAIT:
-        f->R.rax = process_wait(f->R.rdi);
-        break;		
-    case SYS_CREATE:
-        f->R.rax = create(f->R.rdi, f->R.rsi);
-        break;
-    case SYS_REMOVE:
-        f->R.rax = remove(f->R.rdi);
-        break;		
-    case SYS_OPEN:
-        f->R.rax = open(f->R.rdi);
-        break;
-    case SYS_FILESIZE:
-        f->R.rax = filesize(f->R.rdi);
-        break;
-    case SYS_READ:
-        f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
-        break;
-    case SYS_WRITE:
-        f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
-        break;
-    case SYS_SEEK:
-        seek(f->R.rdi, f->R.rsi);
-        break;
-    case SYS_TELL:
-        f->R.rax = tell(f->R.rdi);
-        break;
-    case SYS_CLOSE:
-        close(f->R.rdi);
-        break;
-    default:
-        exit(-1);
-        break;
-    }
+		case SYS_HALT:
+				halt();
+				break;
+		case SYS_EXIT:
+				exit(f->R.rdi);
+				break;
+		case SYS_FORK:
+				f->R.rax = fork(f->R.rdi, f);
+				break;
+		case SYS_EXEC:
+				exec(f->R.rdi);
+				break;
+		case SYS_WAIT:
+				f->R.rax = wait(f->R.rdi);
+				break;
+		case SYS_CREATE:
+				f->R.rax = create(f->R.rdi, f->R.rsi);
+				break;
+		case SYS_REMOVE:
+				f->R.rax = remove(f->R.rdi);
+				break;
+		case SYS_OPEN:
+				f->R.rax = open(f->R.rdi);
+				break;
+		case SYS_FILESIZE:
+				f->R.rax = filesize(f->R.rdi);
+				break;
+		case SYS_READ:
+				f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+				break;
+		case SYS_WRITE:
+				f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+				break;
+		case SYS_SEEK:
+				seek(f->R.rdi, f->R.rsi);
+				break;
+		case SYS_TELL:
+				f->R.rax = tell(f->R.rdi);
+				break;
+		case SYS_CLOSE:
+				close(f->R.rdi);
+				break; 
+		default:
+			exit(-1); ///////
+			break;
+		}
 }
-void halt(void)
-{
+
+
+void halt(void) {
     power_off();
 }
+
 // userprog/syscall.c
-void exit(int status)
-{
-    struct thread *cur = thread_current();
-    cur->exit_status = status;                         // 종료시 상태를 확인, 정상종료면 state = 0
-    printf("%s: exit(%d)\n", thread_name(), status); // 종료 메시지 출력
+void exit(int status) {
+    struct thread *curr = thread_current();
+    curr->exit_status = status;                         // 종료시 상태를 확인, 정상종료면 state = 0
+    printf("%s: exit(%d)\n", curr->name, status); // 종료 메시지 출력
     thread_exit();                                     // thread 종료
 }
-tid_t fork (const char *thread_name,struct intr_frame *f){
-	return process_fork(thread_name,f);
+
+tid_t fork (const char *thread_name, struct intr_frame *f) {
+	check_address(thread_name);
+	return process_fork(thread_name, f);
 }
 
-int exec (const char *file){
-/*
-현재의 프로세스가 cmd_line에서 이름이 주어지는 실행가능한 프로세스로 변경됩니다. 
-이때 주어진 인자들을 전달합니다. 성공적으로 진행된다면 어떤 것도 반환하지 않습니다. 
-만약 프로그램이 이 프로세스를 로드하지 못하거나 다른 이유로 돌리지 못하게 되면 
-exit state -1을 반환하며 프로세스가 종료됩니다. 
-1. filename이 프로세스의 유저영역 메모리에 있는지 확인
-2. filename을 저장해줄 페이지 할당받고, 해당 페이지에 filename 넣어줌
-3. process_exec()를 실행 해, 현재 실행중인 프로세스를 filename으로 context switching하는 작업을 진행
-*/
-	check_address(file);
-	// 문제점) SYS_EXEC - process_exec의 process_cleanup 때문에 f->R.rdi 날아감.
-	// 여기서 file_name 동적할당해서 복사한 뒤, 그걸 넘겨주기
-	int siz = strlen(file)+1;
-	char *file_copy = palloc_get_page(PAL_ZERO); //근데 이해 안감,,
-	strlcpy(file_copy,file,siz);
 
-	if(process_exec(file_copy) == -1)
+int exec (const char *cmd_line) {
+	check_address(cmd_line);
+
+	int size = strlen(cmd_line) + 1; // null 값 포함한 파일 사이즈
+	char *fn_copy = palloc_get_page(PAL_ZERO);
+	if ((fn_copy) == NULL) {
+		exit(-1);
+	}
+	strlcpy(fn_copy, cmd_line, size);
+
+	if (process_exec(fn_copy) == -1) {
 		return -1;
-	
+	}
+
 	NOT_REACHED();
 	return 0;
 }
+// int exec (const char *file){
+// /*
+// 현재의 프로세스가 cmd_line에서 이름이 주어지는 실행가능한 프로세스로 변경됩니다. 
+// 이때 주어진 인자들을 전달합니다. 성공적으로 진행된다면 어떤 것도 반환하지 않습니다. 
+// 만약 프로그램이 이 프로세스를 로드하지 못하거나 다른 이유로 돌리지 못하게 되면 
+// exit state -1을 반환하며 프로세스가 종료됩니다. 
+// 1. filename이 프로세스의 유저영역 메모리에 있는지 확인
+// 2. filename을 저장해줄 페이지 할당받고, 해당 페이지에 filename 넣어줌
+// 3. process_exec()를 실행 해, 현재 실행중인 프로세스를 filename으로 context switching하는 작업을 진행
+// */
+// 	check_address(file);
+// 	// 문제점) SYS_EXEC - process_exec의 process_cleanup 때문에 f->R.rdi 날아감.
+// 	// 여기서 file_name 동적할당해서 복사한 뒤, 그걸 넘겨주기
+// 	int siz = strlen(file)+1;
+// 	char *file_copy = palloc_get_page(PAL_ZERO); //근데 이해 안감,,
+// 	strlcpy(file_copy,file,siz);
 
-int wait (tid_t pid){
+// 	if(process_exec(file_copy) == -1)
+// 		return -1;
+	
+// 	NOT_REACHED();
+// 	return 0;
+// }
+
+int wait (tid_t pid) {
 	return process_wait(pid);
 }
 
-bool create(const char *file, unsigned initial_size){
+bool create(const char *file, unsigned initial_size) {
 	check_address(file);
-	return filesys_create(file,initial_size);
+	return filesys_create(file, initial_size);
 }
 
-bool remove(const char *file){
+bool remove(const char *file) {
 	check_address(file);
 	return filesys_remove(file);
 }
-int open (const char *file){
-/* 파일을 open */
-/* 해당 파일 객체에 파일 디스크립터 부여 */
-/* 파일 디스크립터 리턴 */
-/* 해당 파일이 존재하지 않으면 -1 리턴 */
-	check_address(file);
 
-	struct file *fileobj = filesys_open(file);
-	if(fileobj == NULL)
+int
+open (const char *file) {
+	check_address(file);
+	struct file *open_file = filesys_open(file);
+	
+	if (open_file == NULL) {
 		return -1;
-	int fd = add_file_to_fdt(fileobj);
-	if(fd == -1) //fd table 꽉참
-		file_close(fileobj);
+	} 
+	// 현재 프로세스의 fdt에 파일을 넣는 구문
+	int fd = add_file_to_fdt(open_file);
+	
+	//add 함수 실행했는데, 가득 차서 -1을 받은 경우
+	if (fd == -1) {
+		file_close(open_file);
+	}
 	return fd;
 }
+// int open (const char *file){
+// /* 파일을 open */
+// /* 해당 파일 객체에 파일 디스크립터 부여 */
+// /* 파일 디스크립터 리턴 */
+// /* 해당 파일이 존재하지 않으면 -1 리턴 */
+// 	check_address(file);
 
-int filesize (int fd){
-/* 파일 디스크립터를 이용하여 파일 객체 검색 */
-  struct file *fileobj= search_file_to_fdt(fd);
-  if(fileobj == NULL){ /* 해당 파일이 존재하지 않으면 -1 리턴 */
-	return -1;
-  }
-/* 해당 파일의 길이를 리턴 */
-	return file_length(fileobj);
+// 	struct file *fileobj = filesys_open(file);
+// 	if(fileobj == NULL)
+// 		return -1;
+// 	int fd = add_file_to_fdt(fileobj);
+// 	if(fd == -1) //fd table 꽉참
+// 		file_close(fileobj);
+// 	return fd;
+// }
+
+
+// 파일 크기 정보 > file : inode > inode_disk : off_t length
+int filesize (int fd) {
+	//file.c의 file_length() 활용
+	//fdt에 넣은 파일을 찾는 함수
+	struct file *file = search_file_to_fdt(fd);
+	if (file == NULL) {
+		return -1;
+	}
+	return file_length(file);
 }
+
+
+// int filesize (int fd){
+// /* 파일 디스크립터를 이용하여 파일 객체 검색 */
+//   struct file *fileobj= search_file_to_fdt(fd);
+//   if(fileobj == NULL){ /* 해당 파일이 존재하지 않으면 -1 리턴 */
+// 	return -1;
+//   }
+// /* 해당 파일의 길이를 리턴 */
+// 	return file_length(fileobj);
+// }
+
 int read (int fd, void *buffer, unsigned size) {
 	/* 파일에 동시 접근이 일어날 수 있으므로 Lock 사용 */
 /* 파일 디스크립터를 이용하여 파일 객체 검색 */
@@ -239,20 +292,43 @@ int write (int fd, const void *buffer, unsigned size) {
 	lock_release(&filesys_lock);
 	return size;
 }
-
+// 열린 파일의 위치(offset)를 이동하는 syscall
+// position 0은 파일의 시작 위치
 void seek (int fd, unsigned position) {
-	/* 파일 디스크립터를 이용하여 파일 객체 검색 */
-	struct file *fileobj = search_file_to_fdt(fd);
-	file_seek(fileobj, position);
-/* 해당 열린 파일의 위치(offset)를 position만큼 이동 */
+	struct file *file = search_file_to_fdt(fd);
+	// check_address(file);
+
+	// stdin = 0 / stdout = 1
+	// if (fd <= 1) {
+	// 	return;
+	// }
+
+	file_seek(file, position);
 }
 
+// void seek (int fd, unsigned position) {
+// 	/* 파일 디스크립터를 이용하여 파일 객체 검색 */
+// 	struct file *fileobj = search_file_to_fdt(fd);
+// 	file_seek(fileobj, position);
+// /* 해당 열린 파일의 위치(offset)를 position만큼 이동 */
+// }
+
+// 열린 파일의 위치(offset)을 알려주는 syscall
 unsigned tell (int fd) {
-	/* 파일 디스크립터를 이용하여 파일 객체 검색 */
-	struct file *fileobj = search_file_to_fdt(fd);
-	file_tell(fileobj);
-/* 해당 열린 파일의 위치를 반환 */
+	struct file *file = search_file_to_fdt(fd);
+	// check_address(file);
+
+	// if (fd <= 1) {
+	// 	return;
+	// }
+	return file_tell(fd);
 }
+// unsigned tell (int fd) {
+// 	/* 파일 디스크립터를 이용하여 파일 객체 검색 */
+// 	struct file *fileobj = search_file_to_fdt(fd);
+// 	file_tell(fileobj);
+// /* 해당 열린 파일의 위치를 반환 */
+// }
 
 void close (int fd) {
 	/* 해당 파일 디스크립터에 해당하는 파일을 닫음 */

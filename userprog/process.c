@@ -285,7 +285,7 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
-	memset(argv,NULL,sizeof(argv));
+	memset(argv,NULL,sizeof(argv)); // project 2 추가 내용
 
 	for(token = strtok_r(file_name," ", &save_ptr); token != NULL;){
         //printf ("'%s'\n", token);
