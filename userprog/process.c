@@ -133,18 +133,35 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
 	//return thread_create (name, PRI_DEFAULT, __do_fork, thread_current ());
 	struct thread *parent = thread_current();
-	memcpy(&parent->parent_if,if_,sizeof(struct intr_frame)); //부모 프로세스 메모리를 복사
-	tid_t pid = thread_create (name,PRI_DEFAULT, __do_fork, parent);
+	memcpy(&parent->parent_if, if_, sizeof(struct intr_frame)); // 부모의 유저 스택(userland stack) 복사
 
-	if(pid == TID_ERROR){
+	// 자식 프로세스 생성
+	tid_t pid = thread_create (name, PRI_DEFAULT, __do_fork, parent);
+
+	if (pid == TID_ERROR) {
 		return TID_ERROR;
 	}
-	struct thread *child = get_child_process(pid); 
-	sema_down(&child->fork_sema);
-	if(child->exit_status == -1){
+	// 자식 찾기
+	struct thread *child_t = get_child_process(pid);
+	sema_down(&child_t->fork_sema);
+	if (child_t->exit_status == -1) {
 		return TID_ERROR;
 	}
 	return pid;
+	// 설 =========================================
+	// struct thread *parent = thread_current();
+	// memcpy(&parent->parent_if,if_,sizeof(struct intr_frame)); //부모 프로세스 메모리를 복사
+	// tid_t pid = thread_create (name,PRI_DEFAULT, __do_fork, parent);
+
+	// if(pid == TID_ERROR){
+	// 	return TID_ERROR;
+	// }
+	// struct thread *child = get_child_process(pid); 
+	// sema_down(&child->fork_sema);
+	// if(child->exit_status == -1){
+	// 	return TID_ERROR;
+	// }
+	// return pid;
 }
 
 #ifndef VM
@@ -171,7 +188,8 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
-	newpage = palloc_get_page (PAL_USER);
+	// newpage = palloc_get_page (PAL_USER); /////
+	newpage = palloc_get_page(PAL_USER | PAL_ZERO); ///////////////////
 	if(newpage == NULL){
 		return false;
 	}

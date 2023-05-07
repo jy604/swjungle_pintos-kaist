@@ -72,31 +72,31 @@ syscall_handler (struct intr_frame *f UNUSED) {
     switch (sys_number)
     {
 		case SYS_HALT:
-				halt();
+				halt(); //
 				break;
 		case SYS_EXIT:
-				exit(f->R.rdi);
+				exit(f->R.rdi); //
 				break;
 		case SYS_FORK:
-				f->R.rax = fork(f->R.rdi, f);
+				f->R.rax = fork(f->R.rdi, f); //syscall만, process해야함
 				break;
 		case SYS_EXEC:
-				exec(f->R.rdi);
+				exec(f->R.rdi); //syscall만, process해야함
 				break;
 		case SYS_WAIT:
-				f->R.rax = wait(f->R.rdi);
+				f->R.rax = wait(f->R.rdi); //syscall만, process해야함
 				break;
 		case SYS_CREATE:
-				f->R.rax = create(f->R.rdi, f->R.rsi);
+				f->R.rax = create(f->R.rdi, f->R.rsi); //
 				break;
 		case SYS_REMOVE:
-				f->R.rax = remove(f->R.rdi);
+				f->R.rax = remove(f->R.rdi); //
 				break;
 		case SYS_OPEN:
-				f->R.rax = open(f->R.rdi);
+				f->R.rax = open(f->R.rdi); //
 				break;
 		case SYS_FILESIZE:
-				f->R.rax = filesize(f->R.rdi);
+				f->R.rax = filesize(f->R.rdi); //
 				break;
 		case SYS_READ:
 				f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
@@ -105,13 +105,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
 				f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
 				break;
 		case SYS_SEEK:
-				seek(f->R.rdi, f->R.rsi);
+				seek(f->R.rdi, f->R.rsi); //
 				break;
 		case SYS_TELL:
-				f->R.rax = tell(f->R.rdi);
+				f->R.rax = tell(f->R.rdi); //
 				break;
 		case SYS_CLOSE:
-				close(f->R.rdi);
+				close(f->R.rdi); //
 				break; 
 		default:
 			exit(-1); ///////
@@ -296,12 +296,12 @@ int write (int fd, const void *buffer, unsigned size) {
 // position 0은 파일의 시작 위치
 void seek (int fd, unsigned position) {
 	struct file *file = search_file_to_fdt(fd);
-	// check_address(file);
+	// check_address(file); // 넣으면 TC Fail
 
 	// stdin = 0 / stdout = 1
-	// if (fd <= 1) {
-	// 	return;
-	// }
+	if (fd <= 1) {
+		return;
+	}
 
 	file_seek(file, position);
 }
@@ -316,12 +316,12 @@ void seek (int fd, unsigned position) {
 // 열린 파일의 위치(offset)을 알려주는 syscall
 unsigned tell (int fd) {
 	struct file *file = search_file_to_fdt(fd);
-	// check_address(file);
+	// check_address(file); // 넣으면 TC Fail
 
-	// if (fd <= 1) {
-	// 	return;
-	// }
-	return file_tell(fd);
+	if (fd <= 1) {
+		return;
+	}
+	file_tell(fd);
 }
 // unsigned tell (int fd) {
 // 	/* 파일 디스크립터를 이용하여 파일 객체 검색 */
@@ -339,7 +339,8 @@ void close (int fd) {
 
 void check_address(void *addr){
 	struct thread *curr = thread_current();
-	if(addr== NULL || !is_user_vaddr(addr)|| pml4_get_page(curr->pml4, addr) == NULL){
+	// if(addr== NULL || !is_user_vaddr(addr)|| pml4_get_page(curr->pml4, addr) == NULL){
+	if(addr== NULL || pml4_get_page(curr->pml4, addr) == NULL){
 		exit(-1);
 	} 
 }
