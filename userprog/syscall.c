@@ -155,29 +155,7 @@ int exec (const char *cmd_line) {
 	NOT_REACHED();
 	return 0;
 }
-// int exec (const char *file){
-// /*
-// 현재의 프로세스가 cmd_line에서 이름이 주어지는 실행가능한 프로세스로 변경됩니다. 
-// 이때 주어진 인자들을 전달합니다. 성공적으로 진행된다면 어떤 것도 반환하지 않습니다. 
-// 만약 프로그램이 이 프로세스를 로드하지 못하거나 다른 이유로 돌리지 못하게 되면 
-// exit state -1을 반환하며 프로세스가 종료됩니다. 
-// 1. filename이 프로세스의 유저영역 메모리에 있는지 확인
-// 2. filename을 저장해줄 페이지 할당받고, 해당 페이지에 filename 넣어줌
-// 3. process_exec()를 실행 해, 현재 실행중인 프로세스를 filename으로 context switching하는 작업을 진행
-// */
-// 	check_address(file);
-// 	// 문제점) SYS_EXEC - process_exec의 process_cleanup 때문에 f->R.rdi 날아감.
-// 	// 여기서 file_name 동적할당해서 복사한 뒤, 그걸 넘겨주기
-// 	int siz = strlen(file)+1;
-// 	char *file_copy = palloc_get_page(PAL_ZERO); //근데 이해 안감,,
-// 	strlcpy(file_copy,file,siz);
 
-// 	if(process_exec(file_copy) == -1)
-// 		return -1;
-	
-// 	NOT_REACHED();
-// 	return 0;
-// }
 
 int wait (tid_t pid) {
 	return process_wait(pid);
@@ -210,22 +188,6 @@ open (const char *file) {
 	}
 	return fd;
 }
-// int open (const char *file){
-// /* 파일을 open */
-// /* 해당 파일 객체에 파일 디스크립터 부여 */
-// /* 파일 디스크립터 리턴 */
-// /* 해당 파일이 존재하지 않으면 -1 리턴 */
-// 	check_address(file);
-
-// 	struct file *fileobj = filesys_open(file);
-// 	if(fileobj == NULL)
-// 		return -1;
-// 	int fd = add_file_to_fdt(fileobj);
-// 	if(fd == -1) //fd table 꽉참
-// 		file_close(fileobj);
-// 	return fd;
-// }
-
 
 // 파일 크기 정보 > file : inode > inode_disk : off_t length
 int filesize (int fd) {
@@ -238,16 +200,6 @@ int filesize (int fd) {
 	return file_length(file);
 }
 
-
-// int filesize (int fd){
-// /* 파일 디스크립터를 이용하여 파일 객체 검색 */
-//   struct file *fileobj= search_file_to_fdt(fd);
-//   if(fileobj == NULL){ /* 해당 파일이 존재하지 않으면 -1 리턴 */
-// 	return -1;
-//   }
-// /* 해당 파일의 길이를 리턴 */
-// 	return file_length(fileobj);
-// }
 
 int read (int fd, void *buffer, unsigned size) {
 	/* 파일에 동시 접근이 일어날 수 있으므로 Lock 사용 */
@@ -306,13 +258,6 @@ void seek (int fd, unsigned position) {
 	file_seek(file, position);
 }
 
-// void seek (int fd, unsigned position) {
-// 	/* 파일 디스크립터를 이용하여 파일 객체 검색 */
-// 	struct file *fileobj = search_file_to_fdt(fd);
-// 	file_seek(fileobj, position);
-// /* 해당 열린 파일의 위치(offset)를 position만큼 이동 */
-// }
-
 // 열린 파일의 위치(offset)을 알려주는 syscall
 unsigned tell (int fd) {
 	struct file *file = search_file_to_fdt(fd);
@@ -323,12 +268,6 @@ unsigned tell (int fd) {
 	}
 	file_tell(fd);
 }
-// unsigned tell (int fd) {
-// 	/* 파일 디스크립터를 이용하여 파일 객체 검색 */
-// 	struct file *fileobj = search_file_to_fdt(fd);
-// 	file_tell(fileobj);
-// /* 해당 열린 파일의 위치를 반환 */
-// }
 
 void close (int fd) {
 	/* 해당 파일 디스크립터에 해당하는 파일을 닫음 */
@@ -339,8 +278,7 @@ void close (int fd) {
 
 void check_address(void *addr){
 	struct thread *curr = thread_current();
-	// if(addr== NULL || !is_user_vaddr(addr)|| pml4_get_page(curr->pml4, addr) == NULL){
-	if(addr== NULL || pml4_get_page(curr->pml4, addr) == NULL){
+	if(addr== NULL || !is_user_vaddr(addr)|| pml4_get_page(curr->pml4, addr) == NULL){
 		exit(-1);
 	} 
 }

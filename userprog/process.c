@@ -56,7 +56,6 @@ int add_file_to_fdt (struct file *file){
 	struct thread *curr = thread_current();
 
 	//fdt테이블에서 2부터 탐색하면서 null값을 만나면 거기에 fdt테이블이 open_file을 가리키게끔 해줌
-	// 함수
 	while (curr->fdt[curr->next_fd] != NULL && curr->next_fd < FDCOUNT_LIMIT) {
 		curr->next_fd++;
 	}
@@ -68,14 +67,6 @@ int add_file_to_fdt (struct file *file){
 
 	return curr->next_fd;
 }
-
-// void process_close_file(int fd){
-// 	struct thread *curr = thread_current();
-// /* 파일 디스크립터에 해당하는 파일을 닫음 */
-// 	file_close(curr->fdt[fd]);
-// /* 파일 디스크립터 테이블 해당 엔트리 초기화 */
-// 	curr->fdt[fd] =0;
-// }
 
 
 /* General process initializer for initd and other process. */
@@ -148,20 +139,6 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 		return TID_ERROR;
 	}
 	return pid;
-	// 설 =========================================
-	// struct thread *parent = thread_current();
-	// memcpy(&parent->parent_if,if_,sizeof(struct intr_frame)); //부모 프로세스 메모리를 복사
-	// tid_t pid = thread_create (name,PRI_DEFAULT, __do_fork, parent);
-
-	// if(pid == TID_ERROR){
-	// 	return TID_ERROR;
-	// }
-	// struct thread *child = get_child_process(pid); 
-	// sema_down(&child->fork_sema);
-	// if(child->exit_status == -1){
-	// 	return TID_ERROR;
-	// }
-	// return pid;
 }
 
 #ifndef VM
@@ -375,36 +352,6 @@ void argument_stack(char **argv , int argc ,struct intr_frame *if_) {
 	if_->R.rsi = if_->rsp + sizeof(void*);
 
 }
-// 설--------------------------------------------------------
-// void argument_stack(char **argv, int argc, void **rsp){ 
-// //함수 호출 규약에 따라 유저 스택에 프로그램 이름과 인자들을 저장
-
-// 	for(int i = argc-1; i >=0; i--){
-// 		*rsp = *rsp - (strlen(argv[i])+1);//'\0'포함, rsp(스택포인터이동)
-// 		memcpy(*rsp,argv[i], strlen(argv[i])+1);// arg 스택에 복사
-// 		argv[i] = (char *)*rsp;
-// 	}
-
-// 	if((uintptr_t)*rsp % 8 != 0){
-// 		uintptr_t padding = (uintptr_t)*rsp % 8; //uintptr_t padding = 8-(uintptr_t)*rsp % 8;
-// 		*rsp = *rsp-padding;
-// 		memset(*rsp,0,padding);
-// 	}
-
-// 	// null 넣기
-// 	*rsp = (void*)((uintptr_t)*rsp - 8);
-// 	*(char **)*rsp = 0;
-
-// 	for(int i = argc-1; i>=0; i--){
-// 		*rsp = (void*)((uintptr_t)*rsp - 8);
-// 		*(char **)*rsp = argv[i];
-// 	}
-
-// 	//return address
-// 	*rsp = (void*)((uintptr_t)*rsp - 8);
-// 	**(char **)rsp = 0; //**(char **)rsp = 0;
-// } 
-// 설 ---------------------------------------------------------------
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
