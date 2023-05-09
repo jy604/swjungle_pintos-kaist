@@ -280,7 +280,7 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
-	memset(argv,NULL,sizeof(argv)); // project 2 추가 내용
+	//memset(argv,NULL,sizeof(argv)); // project 2 추가 내용, argv 초기화 방법 1
 
 	for(token = strtok_r(file_name," ", &save_ptr); token != NULL;){
         //printf ("'%s'\n", token);
@@ -340,6 +340,7 @@ void argument_stack(char **argv , int argc ,struct intr_frame *if_) {
 		if_->rsp = if_->rsp - sizeof(char *);
 		if (i == argc) {
 			memset(if_->rsp, 0, sizeof(char*));
+			continue; // memset()으로 argv을 초기화하지 않고 해결하는 방법2
 		}
 		memcpy(if_->rsp, &argv[i], sizeof(char *));
 	}
